@@ -1,0 +1,167 @@
+services:
+  # --- STOCKAGE (Data Lake) ---
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- INGESTION (Binance → MinIO) ---
+  collector:
+    build: .
+    container_name: collector
+    env_file: .env
+    environment:
+      MINIO_ENDPOINT_LOCAL: http://minio:9000
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- TRAITEMENT (Spark) ---
+  spark-master:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-master
+    env_file: .env
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+    ports:
+      - "8085:8080"
+      - "7077:7077"
+    volumes:
+      - ./binance_streaming.py:/opt/spark/binance_streaming.py
+      - ./core-site.xml:/opt/spark/conf/core-site.xml
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+
+  spark-worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-worker-1
+    env_file: .env
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./binance_streaming.py:/opt/spark/binance_streaming.py
+      - ./core-site.xml:/opt/spark/conf/core-site.xml
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+
+  spark-job-submitter:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-job-submitter
+    env_file: .env
+    depends_on:
+      spark-master:
+        condition: service_started
+      mongo-init:
+        condition: service_completed_successfully
+      collector:
+        condition: service_started
+    volumes:
+      - ./binance_streaming.py:/opt/spark/binance_streaming.py
+    entrypoint: /bin/bash
+    command: -c "sleep 30 && /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/binance_streaming.py"
+    restart: no
+
+  # --- BASE DE DONNÉES (Replica Set rs0) ---
+  mongo-primary:
+    image: mongo:latest
+    container_name: mongo-primary
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-primary-data:/data/db
+    healthcheck:
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mongo-secondary-1:
+    image: mongo:latest
+    container_name: mongo-secondary-1
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-secondary-1-data:/data/db
+    healthcheck:
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mongo-secondary-2:
+    image: mongo:latest
+    container_name: mongo-secondary-2
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo-secondary-2-data:/data/db
+    healthcheck:
+      test:
+        ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # One-shot container: initializes replica set and creates admin user
+  mongo-init:
+    image: mongo:latest
+    container_name: mongo-init
+    env_file: .env
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+      mongo-secondary-1:
+        condition: service_healthy
+      mongo-secondary-2:
+        condition: service_healthy
+    volumes:
+      - ./scripts/mongo-rs-init.sh:/scripts/mongo-rs-init.sh:ro
+    command: ["bash", "/scripts/mongo-rs-init.sh"]
+    restart: "no"
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    ports:
+      - "8990:8081"
+    environment:
+      ME_CONFIG_BASICAUTH: true
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: pwd
+      ME_CONFIG_MONGODB_URL: mongodb://mongo-primary:27017/?replicaSet=rs0
+
+volumes:
+  mongo-primary-data:
+  mongo-secondary-1-data:
+  mongo-secondary-2-data:

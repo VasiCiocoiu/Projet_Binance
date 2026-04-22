@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <!-- MinIO / S3A Configuration -->
+    <property>
+        <name>fs.s3a.endpoint</name>
+        <value>${env.MINIO_ENDPOINT_INTERNAL}</value>
+    </property>
+    <property>
+        <name>fs.s3a.access.key</name>
+        <value>${env.MINIO_ACCESS_KEY}</value>
+    </property>
+    <property>
+        <name>fs.s3a.secret.key</name>
+        <value>${env.MINIO_SECRET_KEY}</value>
+    </property>
+    <property>
+        <name>fs.s3a.path.style.access</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>fs.s3a.impl</name>
+        <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+    </property>
+    <property>
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
+    </property>
+
+    <!-- S3A Thread Pool Configuration (NUMERIC ONLY - NO UNITS) -->
+    <property>
+        <name>fs.s3a.threads.core</name>
+        <value>10</value>
+    </property>
+    <property>
+        <name>fs.s3a.threads.max</name>
+        <value>256</value>
+    </property>
+    <property>
+        <name>fs.s3a.threads.keepalivetime</name>
+        <value>60</value>
+    </property>
+
+    <!-- S3A Connection Timeouts (milliseconds) -->
+    <property>
+        <name>fs.s3a.connection.establish.timeout</name>
+        <value>60000</value>
+    </property>
+    <property>
+        <name>fs.s3a.connection.timeout</name>
+        <value>60000</value>
+    </property>
+    <property>
+        <name>fs.s3a.socket.send.buffer</name>
+        <value>65536</value>
+    </property>
+    <property>
+        <name>fs.s3a.socket.recv.buffer</name>
+        <value>65536</value>
+    </property>
+    <property>
+        <name>fs.s3a.attempts.maximum</name>
+        <value>3</value>
+    </property>
+
+    <!-- MinIO-specific settings -->
+    <property>
+        <name>fs.s3a.ssl.enabled</name>
+        <value>false</value>
+    </property>
+    <property>
+        <name>fs.s3a.signing-algorithm</name>
+        <value>S3SignerType</value>
+    </property>
+</configuration>
+
+
