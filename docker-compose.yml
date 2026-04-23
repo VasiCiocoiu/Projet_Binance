@@ -174,7 +174,6 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MONGO_URI: mongodb://admin:pwd@mongo-primary:27017,mongo-secondary-1:27017,mongo-secondary-2:27017/?replicaSet=rs0&authSource=admin
       DEBUG: "True"
       ALLOWED_HOSTS: "localhost,127.0.0.1,dashboard"
     restart: unless-stopped

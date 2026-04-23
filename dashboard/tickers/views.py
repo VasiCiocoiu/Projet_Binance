@@ -12,6 +12,7 @@ from django.views.decorators.cache import cache_page
 from .db_queries import (
     get_all_symbols,
     get_ticker_by_symbol,
+    get_ticker_history,
     get_top_gainers,
     get_top_losers,
 )
@@ -579,6 +580,43 @@ def api_ticker(request, symbol=None):
         ticker['weightedAvgPrice'] = float(ticker.get('weightedAvgPrice', 0))
         
         return JsonResponse(ticker)
+    except Exception as e:
+        logger.error(f"API error: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@require_http_methods(["GET"])
+def api_ticker_history(request, symbol=None):
+    """
+    GET /api/ticker/BTCUSDT/history/?days=7 - Get historical ticker data.
+    """
+    symbol = symbol or request.GET.get('symbol')
+
+    if not symbol:
+        return JsonResponse({'error': 'Symbol required'}, status=400)
+
+    try:
+        days = int(request.GET.get('days', 1))
+        days = max(1, min(days, 30))
+        history = get_ticker_history(symbol, days=days)
+
+        for row in history:
+            if '_id' in row:
+                row['_id'] = str(row['_id'])
+            row['lastPrice'] = float(row.get('lastPrice', 0))
+            row['priceChange'] = float(row.get('priceChange', 0))
+            row['priceMovement'] = float(row.get('priceMovement', 0))
+            row['volume'] = float(row.get('volume', 0))
+            row['quoteVolume'] = float(row.get('quoteVolume', 0))
+            row['weightedAvgPrice'] = float(row.get('weightedAvgPrice', 0))
+
+        return JsonResponse({
+            'symbol': symbol.upper(),
+            'days': days,
+            'points': history,
+            'count': len(history),
+            'timestamp': datetime.now().isoformat(),
+        })
     except Exception as e:
         logger.error(f"API error: {e}")
         return JsonResponse({'error': str(e)}, status=500)

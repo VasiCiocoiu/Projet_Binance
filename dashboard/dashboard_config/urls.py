@@ -8,6 +8,7 @@ from tickers.views import (
     home,
     api_symbols,
     api_ticker,
+    api_ticker_history,
     api_gainers,
     api_losers,
 )
@@ -22,6 +23,7 @@ urlpatterns = [
     # API Endpoints
     path("api/symbols/", api_symbols, name="api_symbols"),
     path("api/ticker/<str:symbol>/", api_ticker, name="api_ticker"),
+    path("api/ticker/<str:symbol>/history/", api_ticker_history, name="api_ticker_history"),
     path("api/ticker/", api_ticker, name="api_ticker_query"),
     path("api/gainers/", api_gainers, name="api_gainers"),
     path("api/losers/", api_losers, name="api_losers"),

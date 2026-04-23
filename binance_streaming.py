@@ -5,7 +5,7 @@ from pyspark.sql import SparkSession  # pyright: ignore[reportMissingImports]
 from pyspark.sql.functions import col, current_date, current_timestamp, when  # pyright: ignore[reportMissingImports]
 from pyspark.sql.types import DoubleType, StringType, StructField, StructType  # pyright: ignore[reportMissingImports]
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, date
 from minio import Minio  # pyright: ignore[reportMissingImports]
 
 # Schema for Binance data
@@ -59,8 +59,8 @@ def read_binance_from_minio():
         traceback.print_exc()
         return None
 
-def insert_to_mongodb(df, collection_name="realtime_data"):
-    """Insert DataFrame records into MongoDB using PyMongo"""
+def insert_to_mongodb(df, collection_name="price_history"):
+    """Insert DataFrame records into MongoDB time-series collection (append-only)."""
     mongo_uri = "mongodb://mongo-primary:27017,mongo-secondary-1:27017,mongo-secondary-2:27017/?replicaSet=rs0"
 
     try:
@@ -70,7 +70,7 @@ def insert_to_mongodb(df, collection_name="realtime_data"):
 
         # Ping to verify connection
         client.admin.command('ping')
-        print(f"✅ Connected to MongoDB")
+        print("✅ Connected to MongoDB time-series collection")
 
         records = df.select("*").rdd.map(lambda row: row.asDict()).collect()
 
@@ -78,19 +78,36 @@ def insert_to_mongodb(df, collection_name="realtime_data"):
             print(f"⚠️  No records to insert into {collection_name}")
             return
 
-        # Convert timestamp and date objects to ISO format strings
+        timeseries_records = []
         for record in records:
-            for key, val in record.items():
-                if isinstance(val, datetime):
-                    record[key] = val.isoformat()
-                elif hasattr(val, 'isoformat'):
-                    record[key] = val.isoformat()
+            symbol = record.pop("symbol", None)
+            timestamp = record.pop("timestamp", None)
 
-        if collection_name == "realtime_data":
-            collection.delete_many({})
+            if not symbol or not timestamp:
+                continue
 
-        result = collection.insert_many(records)
-        print(f"✅ Inserted {len(result.inserted_ids)} records into {collection_name}")
+            ts_doc = {
+                "timestamp": timestamp,
+                "metadata": {
+                    "symbol": str(symbol).upper()
+                }
+            }
+
+            # PyMongo cannot encode datetime.date directly; serialize date fields safely.
+            for key, value in list(record.items()):
+                if isinstance(value, date) and not isinstance(value, datetime):
+                    record[key] = value.isoformat()
+
+            ts_doc.update(record)
+            timeseries_records.append(ts_doc)
+
+        if not timeseries_records:
+            print(f"⚠️  No valid time-series records to insert into {collection_name}")
+            return
+
+        result = collection.insert_many(timeseries_records)
+        print(f"✅ Inserted {len(result.inserted_ids)} records into time-series '{collection_name}'")
+        print("   Historical data retained for trend analysis")
 
         client.close()
     except Exception as e:
@@ -154,8 +171,8 @@ try:
     filtered_df.select("symbol", "timestamp", "lastPrice", "volume", "priceMovement").show(5, truncate=False)
 
     # Write to MongoDB
-    print(f"\n📤 Writing {filtered_df.count()} records to MongoDB...")
-    insert_to_mongodb(filtered_df, "realtime_data")
+    print(f"\n📤 Writing {filtered_df.count()} records to MongoDB time-series...")
+    insert_to_mongodb(filtered_df, "price_history")
 
     print("\n" + "=" * 80)
     print("✅ PIPELINE COMPLETED SUCCESSFULLY")
