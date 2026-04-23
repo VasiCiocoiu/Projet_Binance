@@ -1,13 +1,12 @@
 import os
 import sys
 import json
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from pyspark.sql import SparkSession  # pyright: ignore[reportMissingImports]
+from pyspark.sql.functions import col, current_date, current_timestamp, when  # pyright: ignore[reportMissingImports]
+from pyspark.sql.types import DoubleType, StringType, StructField, StructType  # pyright: ignore[reportMissingImports]
 from pymongo import MongoClient
 from datetime import datetime
-from minio import Minio
-from io import BytesIO
+from minio import Minio  # pyright: ignore[reportMissingImports]
 
 # Schema for Binance data
 schema = StructType([

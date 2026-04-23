@@ -161,6 +161,30 @@ services:
       ME_CONFIG_BASICAUTH_PASSWORD: pwd
       ME_CONFIG_MONGODB_URL: mongodb://mongo-primary:27017/?replicaSet=rs0
 
+  # --- DASHBOARD (Django SPA) ---
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: dashboard
+    env_file: .env
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    environment:
+      MONGO_URI: mongodb://admin:pwd@mongo-primary:27017,mongo-secondary-1:27017,mongo-secondary-2:27017/?replicaSet=rs0&authSource=admin
+      DEBUG: "True"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,dashboard"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/symbols/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   mongo-primary-data:
   mongo-secondary-1-data:
